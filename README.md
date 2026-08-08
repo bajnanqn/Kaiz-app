@@ -45,7 +45,19 @@
       };
 
       const [formData, setFormData] = useState(initialFormState);
-      const [itemForm, setItemForm] = useState({ name: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photo: null });
+      
+      const initialItemState = { 
+        name: '', 
+        materialName: '', 
+        modelName: '', 
+        designName: '', 
+        category: 'Fabric', 
+        brand: 'Ledi', 
+        stock: '', 
+        price: '', 
+        photo: null 
+      };
+      const [itemForm, setItemForm] = useState(initialItemState);
 
       useEffect(() => {
         const saved = localStorage.getItem('kaiz_orders');
@@ -78,7 +90,6 @@
         }
       };
 
-      // Auto calculate Advance (50%) on Selling Price change
       const handleSellingPriceChange = (val) => {
         const sp = Number(val) || 0;
         const autoAdv = sp > 0 ? (sp * 0.5) : '';
@@ -87,6 +98,50 @@
           sellingPrice: val,
           advanceAmount: autoAdv
         }));
+      };
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setItemForm(prev => ({ ...prev, photo: reader.result }));
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleItemSubmit = (e) => {
+        e.preventDefault();
+        if (!itemForm.name || !itemForm.price) {
+          alert('Please enter Item Name and Price');
+          return;
+        }
+        const updated = [...items, { ...itemForm, id: Date.now() }];
+        saveItemsToStorage(updated);
+        setItemForm(initialItemState);
+        alert('Item Registered Successfully!');
+      };
+
+      const handleDeleteItem = (id) => {
+        if (confirm('Are you sure you want to delete this item?')) {
+          const updated = items.filter(item => item.id !== id);
+          saveItemsToStorage(updated);
+        }
+      };
+
+      const shareProductToWhatsApp = (item) => {
+        let msg = `*KAIZ SOOQ - Product Details*\n\n`;
+        msg += `📌 *Item Name:* ${item.name}\n`;
+        if (item.materialName) msg += `🧵 *Material:* ${item.materialName}\n`;
+        if (item.modelName) msg += `👗 *Model:* ${item.modelName}\n`;
+        if (item.designName) msg += `🎨 *Design:* ${item.designName}\n`;
+        msg += `🏷️ *Price:* ₹${item.price}\n`;
+        msg += `📦 *Availability:* ${item.stock ? item.stock + ' in stock' : 'Available'}\n\n`;
+        msg += `*Brand:* ${item.brand || 'KAIZ SOOQ'}\n`;
+        msg += `Contact us to place your order now!`;
+
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
       const handleOrderSubmit = (e) => {
@@ -135,8 +190,6 @@
 
         if (type === 'adv') {
           msg = `*${brandHeader} Order Confirmed!*\nHello ${order.customerName},\nYour order for ${order.dressName} is confirmed.\nAdvance Paid: ₹${order.advanceAmount || 0}\nRemaining Balance: ₹${balance}\nExpected Delivery: ${order.deliveryDate}`;
-          
-          // Update Order State to mark Adv Paid
           const updated = orders.map(o => o.id === order.id ? { ...o, isAdvPaid: true } : o);
           saveOrdersToStorage(updated);
 
@@ -144,8 +197,6 @@
           msg = `*${brandHeader} Payment Reminder*\nHello ${order.customerName},\nPlease pay the remaining balance of ₹${balance} via GPay/PhonePe to:\n*Muhammedanas3010-1@oksbi*`;
         } else if (type === 'full') {
           msg = `*${brandHeader} Payment Confirmation*\nThank you ${order.customerName}. Your payment for ${order.dressName} has been received in full.`;
-          
-          // Update Order State to mark Fully Paid
           const updated = orders.map(o => o.id === order.id ? { ...o, isFullyPaid: true } : o);
           saveOrdersToStorage(updated);
 
@@ -166,11 +217,9 @@
       const lediOrders = orders.filter(o => o.brand === 'Ledi');
       const bebiOrders = orders.filter(o => o.brand === 'Bebi');
 
-      // Tailor-wise Stitching Totals
       const aniMolStitching = orders.filter(o => o.tailorName === 'Ani Mol').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
       const ummaStitching = orders.filter(o => o.tailorName === 'Umma').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
 
-      // Financials per brand
       const calculateBrandFinancials = (brandOrders) => {
         let totalProfit = 0;
         let totalExpense = 0;
@@ -192,7 +241,6 @@
         return sum + (sp - cost);
       }, 0);
 
-      // Form Profit Calculation on the fly
       const formSellingPrice = Number(formData.sellingPrice || 0);
       const formCosts = Number(formData.materialRate || 0) + Number(formData.stitchingCharge || 0) + Number(formData.shippingCharge || 0);
       const estimatedFormProfit = formSellingPrice - formCosts;
@@ -251,7 +299,6 @@
             {/* VIEW 1: DASHBOARD */}
             {view === 'dashboard' && (
               <>
-                {/* Image Banner Style Card */}
                 <div className="bg-gradient-to-br from-[#1B2A4A] to-[#0F172A] rounded-2xl p-5 border border-gray-800 shadow-xl relative overflow-hidden space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-xs uppercase tracking-wider font-semibold text-gray-400">Net Calculated Profit</span>
@@ -261,7 +308,6 @@
                   <p className="text-xs text-gray-400">Real-time revenue tracking across all registered orders.</p>
                 </div>
 
-                {/* LEDI / BEBI Breakdown Grid */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-[#1B2A4A] p-3 rounded-xl border border-blue-500/30 space-y-1">
                     <div className="text-xs font-bold text-blue-400 uppercase">👗 LEDI WEAR</div>
@@ -275,7 +321,6 @@
                   </div>
                 </div>
 
-                {/* Popular Services Grid */}
                 <div className="space-y-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Primary Features</h3>
                   <div className="grid grid-cols-4 gap-2">
@@ -298,7 +343,6 @@
                   </div>
                 </div>
 
-                {/* Stitching Charges Tailor Breakdown */}
                 <div className="space-y-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Stitching Earnings</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -313,7 +357,6 @@
                   </div>
                 </div>
 
-                {/* Upcoming Delivery */}
                 <div className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-3">
                   <div className="flex justify-between items-center border-b border-gray-800 pb-2">
                     <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">🗓 Next Upcoming Delivery</span>
@@ -428,7 +471,6 @@
                     <input type="number" placeholder="Shipping Cost (₹)" value={formData.shippingCharge} onChange={(e) => setFormData({ ...formData, shippingCharge: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
                   </div>
 
-                  {/* Dynamic Calculated Estimated Profit Banner */}
                   <div className="bg-[#1B2A4A] p-2 rounded-lg border border-[#2ECC71]/30 flex justify-between items-center text-xs mt-2">
                     <span className="text-gray-300 font-bold">Auto Calculated Profit:</span>
                     <span className={`font-black text-sm ${estimatedFormProfit >= 0 ? 'text-[#2ECC71]' : 'text-[#E74C3C]'}`}>
@@ -476,7 +518,6 @@
                           </div>
                         </div>
 
-                        {/* WhatsApp Actions (Smart Flow) */}
                         <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-gray-800 text-[11px]">
                           {!order.isAdvPaid ? (
                             <button onClick={() => triggerWhatsApp('adv', order)} className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
@@ -560,28 +601,101 @@
               </div>
             )}
 
-            {/* VIEW 5: ITEM STORE */}
+            {/* VIEW 5: ITEM STORE WITH IMAGE UPLOAD & DETAILS */}
             {view === 'items' && (
               <div className="space-y-3">
                 <h2 className="text-base font-bold text-white">Item Store / Inventory</h2>
-                <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2">
-                  <h3 className="text-xs font-bold text-gray-400">[+] Register New Inventory Item</h3>
-                  <input type="text" placeholder="Item Name" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Price (₹)" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-                    <input type="number" placeholder="Stock" value={itemForm.stock} onChange={(e) => setItemForm({ ...itemForm, stock: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                
+                <form onSubmit={handleItemSubmit} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2.5">
+                  <h3 className="text-xs font-bold text-[#2ECC71]">[+] Register New Inventory Item</h3>
+                  
+                  <div>
+                    <label className="text-[10px] text-gray-400 font-bold">Select Target Brand</label>
+                    <select value={itemForm.brand} onChange={(e) => setItemForm({ ...itemForm, brand: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white mt-1">
+                      <option value="Ledi">Ledi Wear</option>
+                      <option value="Bebi">Bebi Wear</option>
+                    </select>
                   </div>
-                  <button onClick={() => { saveItemsToStorage([...items, { ...itemForm, id: Date.now() }]); setItemForm({ name: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photo: null }); }} className="w-full bg-[#2ECC71] text-black font-bold py-2 rounded text-xs">
-                    Save Item
-                  </button>
-                </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" placeholder="Item Name *" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} required className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Material Name (e.g. Silk, Cotton)" value={itemForm.materialName} onChange={(e) => setItemForm({ ...itemForm, materialName: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <input type="text" placeholder="Model Name / Style" value={itemForm.modelName} onChange={(e) => setItemForm({ ...itemForm, modelName: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Design Code / Name" value={itemForm.designName} onChange={(e) => setItemForm({ ...itemForm, designName: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <input type="number" placeholder="Price (₹) *" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} required className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Stock Qty" value={itemForm.stock} onChange={(e) => setItemForm({ ...itemForm, stock: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <select value={itemForm.category} onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white">
+                      <option value="Fabric">Fabric</option>
+                      <option value="ReadyMade">ReadyMade</option>
+                      <option value="Accessory">Accessory</option>
+                    </select>
+                  </div>
+
+                  {/* Image Upload Input */}
+                  <div>
+                    <label className="text-[10px] text-gray-400 font-bold">Upload Product Photo</label>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs text-gray-400 mt-1 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#2ECC71] file:text-black hover:file:bg-[#27ae60]" />
+                  </div>
+
+                  {itemForm.photo && (
+                    <div className="relative w-16 h-16 rounded overflow-hidden border border-gray-700">
+                      <img src={itemForm.photo} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+
+                  <button type="submit" className="w-full bg-[#2ECC71] text-black font-extrabold py-2 rounded text-xs transition hover:bg-[#27ae60]">
+                    Save Item to Inventory
+                  </button>
+                </form>
+
+                {/* Registered Items List */}
+                <div className="grid grid-cols-2 gap-3">
                   {items.map(item => (
-                    <div key={item.id} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-1">
-                      <div className="text-xs font-bold text-white">{item.name}</div>
-                      <div className="text-xs text-[#2ECC71] font-extrabold">₹{item.price}</div>
-                      <div className="text-[10px] text-gray-400">In Stock: {item.stock}</div>
+                    <div key={item.id} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2 flex flex-col justify-between shadow-md">
+                      <div>
+                        {item.photo ? (
+                          <div className="w-full h-28 rounded-lg overflow-hidden border border-gray-800 mb-2">
+                            <img src={item.photo} alt={item.name} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-full h-24 bg-[#0D1B2A] rounded-lg border border-gray-800 mb-2 flex items-center justify-center text-gray-600 text-xs">
+                            No Image
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-between items-start">
+                          <h4 className="text-xs font-bold text-white line-clamp-1">{item.name}</h4>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded text-white ${item.brand === 'Ledi' ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                            {item.brand || 'Ledi'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-[#2ECC71] font-extrabold mt-1">₹{item.price}</div>
+                        
+                        <div className="space-y-0.5 text-[10px] text-gray-400 mt-1.5 border-t border-gray-800/60 pt-1">
+                          {item.materialName && <div>🧵 <span className="text-gray-300">{item.materialName}</span></div>}
+                          {item.modelName && <div>👗 <span className="text-gray-300">{item.modelName}</span></div>}
+                          {item.designName && <div>🎨 <span className="text-gray-300">{item.designName}</span></div>}
+                          <div>📦 Stock: <span className="text-gray-200">{item.stock || 'N/A'}</span></div>
+                        </div>
+                      </div>
+
+                      {/* Action & Share Buttons */}
+                      <div className="space-y-1 pt-2 border-t border-gray-800">
+                        <button onClick={() => shareProductToWhatsApp(item)} className="w-full bg-[#2ECC71]/10 text-[#2ECC71] border border-[#2ECC71]/30 hover:bg-[#2ECC71] hover:text-black transition py-1 rounded text-[10px] font-bold flex items-center justify-center gap-1">
+                          📲 Share Product
+                        </button>
+                        <button onClick={() => handleDeleteItem(item.id)} className="w-full text-[10px] text-[#E74C3C] hover:underline text-center block pt-0.5">
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
