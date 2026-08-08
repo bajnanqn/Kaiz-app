@@ -1,1 +1,620 @@
 # Kaiz-app
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KAIZ SOOQ - Executive Dashboard</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React & React DOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-[#0D1B2A] text-[#E2E8F0] font-sans antialiased pb-24 selection:bg-[#2ECC71] selection:text-black">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function KaizSooqApp() {
+      const [view, setView] = useState('dashboard');
+      const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+      const [brandFilter, setBrandFilter] = useState('All');
+      const [orders, setOrders] = useState([]);
+      const [items, setItems] = useState([]);
+      const [editingOrderId, setEditingOrderId] = useState(null);
+      const [expandedCustomerId, setExpandedCustomerId] = useState(null);
+
+      const initialFormState = {
+        brand: 'Ledi',
+        customerName: '',
+        phone: '',
+        whatsapp: '',
+        address: '',
+        pincode: '',
+        dressLength: '', bust: '', waist: '', hip: '', shoulder: '', sleeveLength: '', neck: '', armhole: '',
+        age: '', bebiWaist: '', bebiDressLength: '', bebiSleeveLength: '',
+        dressName: '', deliveryDate: '', courier: 'DTDC', trackingNo: '',
+        sellingPrice: '', advanceAmount: '', materialRate: '', stitchingCharge: '', tailorName: 'Ani Mol', shippingCharge: '',
+        isAdvPaid: false,
+        isFullyPaid: false
+      };
+
+      const [formData, setFormData] = useState(initialFormState);
+      const [itemForm, setItemForm] = useState({ name: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photo: null });
+
+      useEffect(() => {
+        const saved = localStorage.getItem('kaiz_orders');
+        if (saved) setOrders(JSON.parse(saved));
+        const savedItems = localStorage.getItem('kaiz_items');
+        if (savedItems) setItems(JSON.parse(savedItems));
+      }, []);
+
+      const saveOrdersToStorage = (updatedOrders) => {
+        setOrders(updatedOrders);
+        localStorage.setItem('kaiz_orders', JSON.stringify(updatedOrders));
+      };
+
+      const saveItemsToStorage = (updatedItems) => {
+        setItems(updatedItems);
+        localStorage.setItem('kaiz_items', JSON.stringify(updatedItems));
+      };
+
+      const handlePhoneChange = (phoneNum) => {
+        setFormData(prev => ({ ...prev, phone: phoneNum }));
+        const existingOrder = orders.find(o => o.phone === phoneNum);
+        if (existingOrder && !editingOrderId) {
+          setFormData(prev => ({
+            ...prev,
+            customerName: existingOrder.customerName,
+            whatsapp: existingOrder.whatsapp,
+            address: existingOrder.address,
+            pincode: existingOrder.pincode
+          }));
+        }
+      };
+
+      // Auto calculate Advance (50%) on Selling Price change
+      const handleSellingPriceChange = (val) => {
+        const sp = Number(val) || 0;
+        const autoAdv = sp > 0 ? (sp * 0.5) : '';
+        setFormData(prev => ({
+          ...prev,
+          sellingPrice: val,
+          advanceAmount: autoAdv
+        }));
+      };
+
+      const handleOrderSubmit = (e) => {
+        e.preventDefault();
+        if (editingOrderId) {
+          const updated = orders.map(o => o.id === editingOrderId ? { ...formData, id: editingOrderId } : o);
+          saveOrdersToStorage(updated);
+          alert('Order Updated Successfully!');
+          setEditingOrderId(null);
+        } else {
+          const newOrder = { ...formData, id: Date.now() };
+          saveOrdersToStorage([newOrder, ...orders]);
+          alert('Order Saved Successfully!');
+        }
+        setFormData(initialFormState);
+        setView('savedOrders');
+      };
+
+      const handleEditOrder = (order) => {
+        setFormData(order);
+        setEditingOrderId(order.id);
+        setView('addOrder');
+      };
+
+      const handleDeleteOrder = (id) => {
+        if (confirm('Are you sure you want to delete this order?')) {
+          const updated = orders.filter(o => o.id !== id);
+          saveOrdersToStorage(updated);
+        }
+      };
+
+      const getTrackingLink = (courier, trackingNo) => {
+        if (!trackingNo) return '#';
+        if (courier === 'DTDC') {
+          return `https://www.dtdc.com/tracking?strShipmentNumber=${trackingNo}`;
+        } else if (courier === 'India Post') {
+          return `https://www.indiapost.gov.in/_layouts/15/dop.portal.tracking/trackconsignment.aspx`;
+        }
+        return `https://www.google.com/search?q=track+${encodeURIComponent(courier)}+${encodeURIComponent(trackingNo)}`;
+      };
+
+      const triggerWhatsApp = (type, order) => {
+        const balance = Number(order.sellingPrice || 0) - Number(order.advanceAmount || 0);
+        const brandHeader = order.brand;
+        let msg = '';
+
+        if (type === 'adv') {
+          msg = `*${brandHeader} Order Confirmed!*\nHello ${order.customerName},\nYour order for ${order.dressName} is confirmed.\nAdvance Paid: ₹${order.advanceAmount || 0}\nRemaining Balance: ₹${balance}\nExpected Delivery: ${order.deliveryDate}`;
+          
+          // Update Order State to mark Adv Paid
+          const updated = orders.map(o => o.id === order.id ? { ...o, isAdvPaid: true } : o);
+          saveOrdersToStorage(updated);
+
+        } else if (type === 'remind') {
+          msg = `*${brandHeader} Payment Reminder*\nHello ${order.customerName},\nPlease pay the remaining balance of ₹${balance} via GPay/PhonePe to:\n*Muhammedanas3010-1@oksbi*`;
+        } else if (type === 'full') {
+          msg = `*${brandHeader} Payment Confirmation*\nThank you ${order.customerName}. Your payment for ${order.dressName} has been received in full.`;
+          
+          // Update Order State to mark Fully Paid
+          const updated = orders.map(o => o.id === order.id ? { ...o, isFullyPaid: true } : o);
+          saveOrdersToStorage(updated);
+
+        } else if (type === 'dispatched') {
+          const trackLink = getTrackingLink(order.courier, order.trackingNo);
+          msg = `*${brandHeader} Order Dispatched!*\nYour order for ${order.dressName} has been shipped.\nCourier: ${order.courier}\nTracking No: ${order.trackingNo}\nTrack your parcel here: ${trackLink}`;
+        }
+
+        if (order.brand === 'Bebi') {
+          msg += `\n\n*KAIZ SOOQ - be every baby’s ideal*`;
+        }
+
+        const targetPhone = order.whatsapp || order.phone;
+        window.open(`https://wa.me/91${targetPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+      };
+
+      const filteredOrders = brandFilter === 'All' ? orders : orders.filter(o => o.brand === brandFilter);
+      const lediOrders = orders.filter(o => o.brand === 'Ledi');
+      const bebiOrders = orders.filter(o => o.brand === 'Bebi');
+
+      // Tailor-wise Stitching Totals
+      const aniMolStitching = orders.filter(o => o.tailorName === 'Ani Mol').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
+      const ummaStitching = orders.filter(o => o.tailorName === 'Umma').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
+
+      // Financials per brand
+      const calculateBrandFinancials = (brandOrders) => {
+        let totalProfit = 0;
+        let totalExpense = 0;
+        brandOrders.forEach(o => {
+          const sp = Number(o.sellingPrice || 0);
+          const exp = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
+          totalExpense += exp;
+          totalProfit += (sp - exp);
+        });
+        return { totalProfit, totalExpense };
+      };
+
+      const lediFinancials = calculateBrandFinancials(lediOrders);
+      const bebiFinancials = calculateBrandFinancials(bebiOrders);
+
+      const overallNetProfit = filteredOrders.reduce((sum, o) => {
+        const sp = Number(o.sellingPrice || 0);
+        const cost = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
+        return sum + (sp - cost);
+      }, 0);
+
+      // Form Profit Calculation on the fly
+      const formSellingPrice = Number(formData.sellingPrice || 0);
+      const formCosts = Number(formData.materialRate || 0) + Number(formData.stitchingCharge || 0) + Number(formData.shippingCharge || 0);
+      const estimatedFormProfit = formSellingPrice - formCosts;
+
+      const uniqueCustomers = Array.from(new Set(orders.map(o => o.phone))).map(phone => {
+        return orders.find(o => o.phone === phone);
+      });
+
+      const nextUpcoming = [...orders].sort((a, b) => new Date(a.deliveryDate) - new Date(b.deliveryDate))[0];
+
+      return (
+        <div className="min-h-screen">
+
+          {/* App Top Header Bar */}
+          <header className="bg-[#1B2A4A] text-[#E2E8F0] p-4 sticky top-0 z-50 flex justify-between items-center border-b border-gray-800 shadow-md">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setIsSidebarOpen(true)} className="text-2xl text-[#2ECC71]">☰</button>
+              <div>
+                <h1 className="font-black text-lg tracking-wider text-white">KAIZ SOOQ</h1>
+                <p className="text-[10px] text-gray-400">Business Manager</p>
+              </div>
+            </div>
+            <select value={brandFilter} onChange={(e) => setBrandFilter(e.target.value)} className="bg-[#0D1B2A] text-[#2ECC71] border border-[#2ECC71] rounded-lg px-2 py-1 text-xs font-bold outline-none">
+              <option value="All">All Brands</option>
+              <option value="Ledi">Ledi Wear</option>
+              <option value="Bebi">Bebi Wear</option>
+            </select>
+          </header>
+
+          {/* Sidebar Drawer */}
+          {isSidebarOpen && (
+            <div className="fixed inset-0 bg-black/70 z-50 flex backdrop-blur-sm">
+              <div className="bg-[#1B2A4A] w-64 p-5 h-full flex flex-col justify-between shadow-2xl border-r border-gray-800">
+                <div>
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="font-bold text-lg text-[#2ECC71]">Menu Navigation</h2>
+                    <button onClick={() => setIsSidebarOpen(false)} className="text-xl font-bold text-gray-400">✕</button>
+                  </div>
+                  <nav className="flex flex-col gap-3 font-semibold text-gray-300">
+                    <button onClick={() => { setView('dashboard'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">Dashboard</button>
+                    <button onClick={() => { setEditingOrderId(null); setFormData(initialFormState); setView('addOrder'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">[+] Create New Order</button>
+                    <button onClick={() => { setView('savedOrders'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">📜 Saved Orders History</button>
+                    <button onClick={() => { setView('customers'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">👤 Customer Directory</button>
+                    <button onClick={() => { setView('items'); setIsSidebarOpen(false); }} className="text-left p-2 hover:bg-[#0D1B2A] hover:text-[#2ECC71] rounded-lg transition">👗 Store Inventory</button>
+                  </nav>
+                </div>
+                <div className="text-[10px] text-gray-500">KAIZ SOOQ v2.0 - Dark Executive Theme</div>
+              </div>
+              <div className="flex-1" onClick={() => setIsSidebarOpen(false)}></div>
+            </div>
+          )}
+
+          {/* MAIN CONTAINER */}
+          <main className="p-4 max-w-md mx-auto space-y-5">
+
+            {/* VIEW 1: DASHBOARD */}
+            {view === 'dashboard' && (
+              <>
+                {/* Image Banner Style Card */}
+                <div className="bg-gradient-to-br from-[#1B2A4A] to-[#0F172A] rounded-2xl p-5 border border-gray-800 shadow-xl relative overflow-hidden space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs uppercase tracking-wider font-semibold text-gray-400">Net Calculated Profit</span>
+                    <span className="text-xs bg-[#2ECC71]/10 text-[#2ECC71] px-2 py-0.5 rounded font-mono font-bold border border-[#2ECC71]/30">Active</span>
+                  </div>
+                  <div className="text-4xl font-extrabold text-[#2ECC71] tracking-tight">₹{overallNetProfit.toLocaleString()}</div>
+                  <p className="text-xs text-gray-400">Real-time revenue tracking across all registered orders.</p>
+                </div>
+
+                {/* LEDI / BEBI Breakdown Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-[#1B2A4A] p-3 rounded-xl border border-blue-500/30 space-y-1">
+                    <div className="text-xs font-bold text-blue-400 uppercase">👗 LEDI WEAR</div>
+                    <div className="text-xs text-gray-300">Profit: <span className="font-bold text-[#2ECC71]">₹{lediFinancials.totalProfit}</span></div>
+                    <div className="text-xs text-gray-300">Expense: <span className="font-bold text-[#E74C3C]">₹{lediFinancials.totalExpense}</span></div>
+                  </div>
+                  <div className="bg-[#1B2A4A] p-3 rounded-xl border border-purple-500/30 space-y-1">
+                    <div className="text-xs font-bold text-purple-400 uppercase">👶 BEBI WEAR</div>
+                    <div className="text-xs text-gray-300">Profit: <span className="font-bold text-[#2ECC71]">₹{bebiFinancials.totalProfit}</span></div>
+                    <div className="text-xs text-gray-300">Expense: <span className="font-bold text-[#E74C3C]">₹{bebiFinancials.totalExpense}</span></div>
+                  </div>
+                </div>
+
+                {/* Popular Services Grid */}
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Primary Features</h3>
+                  <div className="grid grid-cols-4 gap-2">
+                    <button onClick={() => { setEditingOrderId(null); setFormData(initialFormState); setView('addOrder'); }} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
+                      <span className="text-2xl group-hover:scale-110 transition">➕</span>
+                      <span className="text-[10px] font-bold text-gray-300">Add Order</span>
+                    </button>
+                    <button onClick={() => setView('savedOrders')} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
+                      <span className="text-2xl group-hover:scale-110 transition">📜</span>
+                      <span className="text-[10px] font-bold text-gray-300">Orders</span>
+                    </button>
+                    <button onClick={() => setView('customers')} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
+                      <span className="text-2xl group-hover:scale-110 transition">👥</span>
+                      <span className="text-[10px] font-bold text-gray-300">Clients</span>
+                    </button>
+                    <button onClick={() => setView('items')} className="bg-[#1B2A4A] hover:border-[#2ECC71] p-3 rounded-xl border border-gray-800 flex flex-col items-center gap-2 transition group">
+                      <span className="text-2xl group-hover:scale-110 transition">👗</span>
+                      <span className="text-[10px] font-bold text-gray-300">Store</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Stitching Charges Tailor Breakdown */}
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Stitching Earnings</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-gray-800">
+                      <div className="text-[11px] text-gray-400 font-medium">Ani Mol Total Stitching</div>
+                      <div className="text-xl font-bold text-[#2ECC71] mt-1">₹{aniMolStitching.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-gray-800">
+                      <div className="text-[11px] text-gray-400 font-medium">Umma Total Stitching</div>
+                      <div className="text-xl font-bold text-[#2ECC71] mt-1">₹{ummaStitching.toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Upcoming Delivery */}
+                <div className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-3">
+                  <div className="flex justify-between items-center border-b border-gray-800 pb-2">
+                    <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">🗓 Next Upcoming Delivery</span>
+                    <button onClick={() => setView('savedOrders')} className="text-xs text-[#2ECC71] hover:underline font-bold">View All →</button>
+                  </div>
+                  {nextUpcoming ? (
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <div className="text-lg font-black text-white">{nextUpcoming.customerName}</div>
+                        <div className="text-xs text-gray-400">{nextUpcoming.dressName} ({nextUpcoming.brand})</div>
+                      </div>
+                      <div className="bg-amber-500/10 text-amber-400 border border-amber-500/30 font-extrabold text-xs px-3 py-1.5 rounded-lg">
+                        {nextUpcoming.deliveryDate}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-500 py-2">No pending deliveries found</div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* VIEW 2: ADD / EDIT ORDER FORM */}
+            {view === 'addOrder' && (
+              <form onSubmit={handleOrderSubmit} className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-4">
+                <h2 className="text-base font-bold text-white border-b border-gray-800 pb-2">
+                  {editingOrderId ? 'Edit Order Details' : 'Create New Order'}
+                </h2>
+                
+                <div>
+                  <label className="text-xs font-bold text-gray-400">Select Brand Target</label>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <button type="button" onClick={() => setFormData({ ...formData, brand: 'Ledi' })} className={`py-2 text-xs font-bold rounded-lg border ${formData.brand === 'Ledi' ? 'bg-blue-600 text-white border-blue-500' : 'bg-[#0D1B2A] text-gray-400 border-gray-800'}`}>Ledi (Women)</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, brand: 'Bebi' })} className={`py-2 text-xs font-bold rounded-lg border ${formData.brand === 'Bebi' ? 'bg-purple-600 text-white border-purple-500' : 'bg-[#0D1B2A] text-gray-400 border-gray-800'}`}>Bebi (Baby Wear)</button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <input type="text" placeholder="Phone Number (Auto-fill CRM)" value={formData.phone} onChange={(e) => handlePhoneChange(e.target.value)} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                  <input type="text" placeholder="Customer Name" value={formData.customerName} onChange={(e) => setFormData({ ...formData, customerName: e.target.value })} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                  <input type="text" placeholder="WhatsApp Number" value={formData.whatsapp} onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                  <textarea placeholder="Shipping Address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none h-16"></textarea>
+                  <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value })} className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                </div>
+
+                <details className="bg-[#0D1B2A] p-2.5 rounded-lg border border-gray-800">
+                  <summary className="text-xs font-bold text-gray-400 cursor-pointer">Optional Measurements ({formData.brand})</summary>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {formData.brand === 'Ledi' ? (
+                      <>
+                        <input type="text" placeholder="Dress Length" value={formData.dressLength} onChange={(e) => setFormData({ ...formData, dressLength: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                        <input type="text" placeholder="Bust" value={formData.bust} onChange={(e) => setFormData({ ...formData, bust: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                        <input type="text" placeholder="Waist" value={formData.waist} onChange={(e) => setFormData({ ...formData, waist: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                        <input type="text" placeholder="Hip" value={formData.hip} onChange={(e) => setFormData({ ...formData, hip: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                      </>
+                    ) : (
+                      <>
+                        <input type="text" placeholder="Age (e.g. 2-3 yrs)" value={formData.age} onChange={(e) => setFormData({ ...formData, age: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                        <input type="text" placeholder="Waist" value={formData.bebiWaist} onChange={(e) => setFormData({ ...formData, bebiWaist: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                        <input type="text" placeholder="Dress Length" value={formData.bebiDressLength} onChange={(e) => setFormData({ ...formData, bebiDressLength: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                      </>
+                    )}
+                  </div>
+                </details>
+
+                <div className="space-y-2">
+                  <input type="text" placeholder="Dress Name / Item Code" value={formData.dressName} onChange={(e) => setFormData({ ...formData, dressName: e.target.value })} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                  <div>
+                    <label className="text-[10px] font-bold text-[#E74C3C]">Expected Delivery Date *</label>
+                    <input type="date" value={formData.deliveryDate} onChange={(e) => setFormData({ ...formData, deliveryDate: e.target.value })} required className="w-full p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white focus:border-[#2ECC71] outline-none" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={formData.courier} onChange={(e) => setFormData({ ...formData, courier: e.target.value })} className="p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white">
+                      <option value="DTDC">DTDC</option>
+                      <option value="India Post">India Post</option>
+                    </select>
+                    <input type="text" placeholder="Tracking No" value={formData.trackingNo} onChange={(e) => setFormData({ ...formData, trackingNo: e.target.value })} className="p-2.5 text-xs bg-[#0D1B2A] border border-gray-800 rounded-lg text-white" />
+                  </div>
+                </div>
+
+                <div className="bg-[#0D1B2A] p-3 rounded-xl border border-gray-800 space-y-2">
+                  <h3 className="text-xs font-bold text-[#2ECC71]">Financial & Stitching Breakdown</h3>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Selling Price (₹)</label>
+                      <input type="number" placeholder="Selling Price (₹)" value={formData.sellingPrice} onChange={(e) => handleSellingPriceChange(e.target.value)} required className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Advance Amount (50% Auto)</label>
+                      <input type="number" placeholder="Advance (₹)" value={formData.advanceAmount} onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Stitching Charge (₹)</label>
+                      <input type="number" placeholder="Stitching Charge (₹)" value={formData.stitchingCharge} onChange={(e) => setFormData({ ...formData, stitchingCharge: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Assign Tailor</label>
+                      <select value={formData.tailorName} onChange={(e) => setFormData({ ...formData, tailorName: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white font-semibold w-full">
+                        <option value="Ani Mol">Ani Mol</option>
+                        <option value="Umma">Umma</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Material Cost (₹)" value={formData.materialRate} onChange={(e) => setFormData({ ...formData, materialRate: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                    <input type="number" placeholder="Shipping Cost (₹)" value={formData.shippingCharge} onChange={(e) => setFormData({ ...formData, shippingCharge: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                  </div>
+
+                  {/* Dynamic Calculated Estimated Profit Banner */}
+                  <div className="bg-[#1B2A4A] p-2 rounded-lg border border-[#2ECC71]/30 flex justify-between items-center text-xs mt-2">
+                    <span className="text-gray-300 font-bold">Auto Calculated Profit:</span>
+                    <span className={`font-black text-sm ${estimatedFormProfit >= 0 ? 'text-[#2ECC71]' : 'text-[#E74C3C]'}`}>
+                      ₹{estimatedFormProfit}
+                    </span>
+                  </div>
+                </div>
+
+                <button type="submit" className="w-full bg-[#2ECC71] hover:bg-[#27ae60] text-black font-extrabold py-3 rounded-xl shadow-lg transition">
+                  {editingOrderId ? 'Update Order Record' : 'Save Order Record'}
+                </button>
+              </form>
+            )}
+
+            {/* VIEW 3: SAVED ORDERS HISTORY */}
+            {view === 'savedOrders' && (
+              <div className="space-y-3">
+                <h2 className="text-base font-bold text-white">Saved Orders History</h2>
+                {orders.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 text-xs">No orders registered in database.</div>
+                ) : (
+                  orders.map(order => {
+                    const balance = Number(order.sellingPrice || 0) - Number(order.advanceAmount || 0);
+                    return (
+                      <div key={order.id} className="bg-[#1B2A4A] p-4 rounded-xl border border-gray-800 space-y-3 shadow-md">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded text-white ${order.brand === 'Ledi' ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                              {order.brand}
+                            </span>
+                            <h3 className="font-bold text-base text-white mt-1">{order.customerName}</h3>
+                            <p className="text-xs text-gray-400">{order.dressName} | Delivery: <span className="text-gray-200">{order.deliveryDate}</span></p>
+                            <p className="text-[11px] text-gray-400">🧵 Tailor: <span className="text-[#2ECC71] font-bold">{order.tailorName || 'Ani Mol'}</span></p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-base font-black text-[#2ECC71]">₹{order.sellingPrice}</div>
+                            <div className={`text-[11px] font-bold ${balance > 0 ? 'text-[#E74C3C]' : 'text-[#2ECC71]'}`}>
+                              {balance > 0 ? `Bal: ₹${balance}` : 'Paid'}
+                            </div>
+                            
+                            <div className="flex gap-2 mt-2 justify-end">
+                              <button onClick={() => handleEditOrder(order)} className="text-[11px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">✏️ Edit</button>
+                              <button onClick={() => handleDeleteOrder(order.id)} className="text-[11px] bg-[#E74C3C]/10 text-[#E74C3C] px-2 py-0.5 rounded border border-[#E74C3C]/30">🗑️ Delete</button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* WhatsApp Actions (Smart Flow) */}
+                        <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-gray-800 text-[11px]">
+                          {!order.isAdvPaid ? (
+                            <button onClick={() => triggerWhatsApp('adv', order)} className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
+                              💳 Adv
+                            </button>
+                          ) : !order.isFullyPaid ? (
+                            <button onClick={() => triggerWhatsApp('full', order)} className="bg-amber-500/20 text-amber-400 border border-amber-500/30 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
+                              💰 Paid
+                            </button>
+                          ) : (
+                            <button disabled className="bg-gray-800 text-gray-500 border border-gray-700 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1 cursor-not-allowed">
+                              ✅ Full Paid
+                            </button>
+                          )}
+
+                          <button onClick={() => triggerWhatsApp('remind', order)} className="bg-[#0D1B2A] hover:border-amber-400 text-amber-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
+                            🔔 Remind
+                          </button>
+                          
+                          <button onClick={() => triggerWhatsApp('dispatched', order)} className="bg-[#0D1B2A] hover:border-blue-400 text-blue-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
+                            🚚 Track
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* VIEW 4: CUSTOMER DIRECTORY */}
+            {view === 'customers' && (
+              <div className="space-y-3">
+                <h2 className="text-base font-bold text-white">Customer Directory (CRM)</h2>
+                {uniqueCustomers.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 text-xs">No client profile recorded.</div>
+                ) : (
+                  uniqueCustomers.map(customer => {
+                    const isExpanded = expandedCustomerId === customer.phone;
+                    const customerOrders = orders.filter(o => o.phone === customer.phone);
+
+                    return (
+                      <div key={customer.phone} className="bg-[#1B2A4A] rounded-xl border border-gray-800 overflow-hidden">
+                        <div onClick={() => setExpandedCustomerId(isExpanded ? null : customer.phone)} className="p-3 hover:bg-[#0D1B2A] cursor-pointer flex justify-between items-center transition">
+                          <div>
+                            <div className="font-bold text-sm text-white">{customer.customerName}</div>
+                            <div className="text-xs text-gray-400">📞 {customer.phone}</div>
+                          </div>
+                          <div className="text-xs font-bold text-[#2ECC71] flex items-center gap-1">
+                            <span>{customerOrders.length} Order(s)</span>
+                            <span>{isExpanded ? '▲' : '▼'}</span>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="p-3 bg-[#0D1B2A] space-y-3 text-xs border-t border-gray-800">
+                            <div className="bg-[#1B2A4A] p-2.5 rounded-lg border border-gray-800 space-y-1">
+                              <div className="font-bold text-[#2ECC71]">Address Info</div>
+                              <div className="text-gray-300">📍 {customer.address || 'No Address saved'}</div>
+                              <div className="text-gray-400">📮 Pincode: {customer.pincode || 'N/A'}</div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="font-bold text-gray-400">History Log:</div>
+                              {customerOrders.map(ord => (
+                                <div key={ord.id} className="bg-[#1B2A4A] p-2 rounded border border-gray-800 space-y-1">
+                                  <div className="flex justify-between font-bold">
+                                    <span className="text-white">{ord.dressName} ({ord.brand})</span>
+                                    <span className="text-[#2ECC71]">₹{ord.sellingPrice}</span>
+                                  </div>
+                                  <div className="text-gray-400 text-[10px]">Delivery: {ord.deliveryDate} | Tailor: {ord.tailorName || 'Ani Mol'}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* VIEW 5: ITEM STORE */}
+            {view === 'items' && (
+              <div className="space-y-3">
+                <h2 className="text-base font-bold text-white">Item Store / Inventory</h2>
+                <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2">
+                  <h3 className="text-xs font-bold text-gray-400">[+] Register New Inventory Item</h3>
+                  <input type="text" placeholder="Item Name" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Price (₹)" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <input type="number" placeholder="Stock" value={itemForm.stock} onChange={(e) => setItemForm({ ...itemForm, stock: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  </div>
+                  <button onClick={() => { saveItemsToStorage([...items, { ...itemForm, id: Date.now() }]); setItemForm({ name: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photo: null }); }} className="w-full bg-[#2ECC71] text-black font-bold py-2 rounded text-xs">
+                    Save Item
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {items.map(item => (
+                    <div key={item.id} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-1">
+                      <div className="text-xs font-bold text-white">{item.name}</div>
+                      <div className="text-xs text-[#2ECC71] font-extrabold">₹{item.price}</div>
+                      <div className="text-[10px] text-gray-400">In Stock: {item.stock}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </main>
+
+          {/* FLOATING BOTTOM NAVIGATION BAR */}
+          <nav className="fixed bottom-0 left-0 right-0 bg-[#1B2A4A] border-t border-gray-800 py-3 px-6 flex justify-around items-center z-40 shadow-2xl">
+            <button onClick={() => setView('dashboard')} className={`flex flex-col items-center gap-1 ${view === 'dashboard' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
+              <span className="text-lg">🏠</span>
+              <span className="text-[10px] font-bold">Home</span>
+            </button>
+            <button onClick={() => setView('savedOrders')} className={`flex flex-col items-center gap-1 ${view === 'savedOrders' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
+              <span className="text-lg">📜</span>
+              <span className="text-[10px] font-bold">Orders</span>
+            </button>
+            <button onClick={() => setView('customers')} className={`flex flex-col items-center gap-1 ${view === 'customers' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
+              <span className="text-lg">👥</span>
+              <span className="text-[10px] font-bold">Clients</span>
+            </button>
+            <button onClick={() => setView('items')} className={`flex flex-col items-center gap-1 ${view === 'items' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
+              <span className="text-lg">👗</span>
+              <span className="text-[10px] font-bold">Store</span>
+            </button>
+          </nav>
+
+        </div>
+      );
+    }
+
+    ReactDOM.render(<KaizSooqApp />, document.getElementById('root'));
+  </script>
+</body>
+</html>
