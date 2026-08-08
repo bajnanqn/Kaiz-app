@@ -39,11 +39,24 @@
         age: '', bebiWaist: '', bebiDressLength: '', bebiSleeveLength: '',
         dressName: '', deliveryDate: '', courier: 'DTDC', trackingNo: '',
         sellingPrice: '', advanceAmount: '', materialRate: '', stitchingCharge: '', tailorName: 'Ani Mol', shippingCharge: '',
-        paymentStatus: 'Adv Paid'
+        isAdvPaid: false,
+        isFullyPaid: false
       };
 
       const [formData, setFormData] = useState(initialFormState);
-      const [itemForm, setItemForm] = useState({ name: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photo: null });
+      
+      const initialItemState = { 
+        name: '', 
+        materialName: '', 
+        modelName: '', 
+        designName: '', 
+        category: 'Fabric', 
+        brand: 'Ledi', 
+        stock: '', 
+        price: '', 
+        photo: null 
+      };
+      const [itemForm, setItemForm] = useState(initialItemState);
 
       useEffect(() => {
         const saved = localStorage.getItem('kaiz_orders');
@@ -74,6 +87,60 @@
             pincode: existingOrder.pincode
           }));
         }
+      };
+
+      const handleSellingPriceChange = (val) => {
+        const sp = Number(val) || 0;
+        const autoAdv = sp > 0 ? (sp * 0.5) : '';
+        setFormData(prev => ({
+          ...prev,
+          sellingPrice: val,
+          advanceAmount: autoAdv
+        }));
+      };
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setItemForm(prev => ({ ...prev, photo: reader.result }));
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleItemSubmit = (e) => {
+        e.preventDefault();
+        if (!itemForm.name || !itemForm.price) {
+          alert('Please enter Item Name and Price');
+          return;
+        }
+        const updated = [...items, { ...itemForm, id: Date.now() }];
+        saveItemsToStorage(updated);
+        setItemForm(initialItemState);
+        alert('Item Registered Successfully!');
+      };
+
+      const handleDeleteItem = (id) => {
+        if (confirm('Are you sure you want to delete this item?')) {
+          const updated = items.filter(item => item.id !== id);
+          saveItemsToStorage(updated);
+        }
+      };
+
+      const shareProductToWhatsApp = (item) => {
+        let msg = `*KAIZ SOOQ - Product Details*\n\n`;
+        msg += `📌 *Item Name:* ${item.name}\n`;
+        if (item.materialName) msg += `🧵 *Material:* ${item.materialName}\n`;
+        if (item.modelName) msg += `👗 *Model:* ${item.modelName}\n`;
+        if (item.designName) msg += `🎨 *Design:* ${item.designName}\n`;
+        msg += `🏷️ *Price:* ₹${item.price}\n`;
+        msg += `📦 *Availability:* ${item.stock ? item.stock + ' in stock' : 'Available'}\n\n`;
+        msg += `*Brand:* ${item.brand || 'KAIZ SOOQ'}\n`;
+        msg += `Contact us to place your order now!`;
+
+        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
       };
 
       const handleOrderSubmit = (e) => {
@@ -122,10 +189,16 @@
 
         if (type === 'adv') {
           msg = `*${brandHeader} Order Confirmed!*\nHello ${order.customerName},\nYour order for ${order.dressName} is confirmed.\nAdvance Paid: ₹${order.advanceAmount || 0}\nRemaining Balance: ₹${balance}\nExpected Delivery: ${order.deliveryDate}`;
+          const updated = orders.map(o => o.id === order.id ? { ...o, isAdvPaid: true } : o);
+          saveOrdersToStorage(updated);
+
         } else if (type === 'remind') {
           msg = `*${brandHeader} Payment Reminder*\nHello ${order.customerName},\nPlease pay the remaining balance of ₹${balance} via GPay/PhonePe to:\n*Muhammedanas3010-1@oksbi*`;
         } else if (type === 'full') {
           msg = `*${brandHeader} Payment Confirmation*\nThank you ${order.customerName}. Your payment for ${order.dressName} has been received in full.`;
+          const updated = orders.map(o => o.id === order.id ? { ...o, isFullyPaid: true } : o);
+          saveOrdersToStorage(updated);
+
         } else if (type === 'dispatched') {
           const trackLink = getTrackingLink(order.courier, order.trackingNo);
           msg = `*${brandHeader} Order Dispatched!*\nYour order for ${order.dressName} has been shipped.\nCourier: ${order.courier}\nTracking No: ${order.trackingNo}\nTrack your parcel here: ${trackLink}`;
@@ -143,14 +216,33 @@
       const lediOrders = orders.filter(o => o.brand === 'Ledi');
       const bebiOrders = orders.filter(o => o.brand === 'Bebi');
 
-      const lediStitching = lediOrders.reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
-      const bebiStitching = bebiOrders.reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
+      const aniMolStitching = orders.filter(o => o.tailorName === 'Ani Mol').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
+      const ummaStitching = orders.filter(o => o.tailorName === 'Umma').reduce((sum, o) => sum + Number(o.stitchingCharge || 0), 0);
 
-      const netProfit = filteredOrders.reduce((sum, o) => {
+      const calculateBrandFinancials = (brandOrders) => {
+        let totalProfit = 0;
+        let totalExpense = 0;
+        brandOrders.forEach(o => {
+          const sp = Number(o.sellingPrice || 0);
+          const exp = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
+          totalExpense += exp;
+          totalProfit += (sp - exp);
+        });
+        return { totalProfit, totalExpense };
+      };
+
+      const lediFinancials = calculateBrandFinancials(lediOrders);
+      const bebiFinancials = calculateBrandFinancials(bebiOrders);
+
+      const overallNetProfit = filteredOrders.reduce((sum, o) => {
         const sp = Number(o.sellingPrice || 0);
         const cost = Number(o.materialRate || 0) + Number(o.stitchingCharge || 0) + Number(o.shippingCharge || 0);
         return sum + (sp - cost);
       }, 0);
+
+      const formSellingPrice = Number(formData.sellingPrice || 0);
+      const formCosts = Number(formData.materialRate || 0) + Number(formData.stitchingCharge || 0) + Number(formData.shippingCharge || 0);
+      const estimatedFormProfit = formSellingPrice - formCosts;
 
       const uniqueCustomers = Array.from(new Set(orders.map(o => o.phone))).map(phone => {
         return orders.find(o => o.phone === phone);
@@ -206,17 +298,28 @@
             {/* VIEW 1: DASHBOARD */}
             {view === 'dashboard' && (
               <>
-                {/* Image Banner Style Card */}
                 <div className="bg-gradient-to-br from-[#1B2A4A] to-[#0F172A] rounded-2xl p-5 border border-gray-800 shadow-xl relative overflow-hidden space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-xs uppercase tracking-wider font-semibold text-gray-400">Net Calculated Profit</span>
                     <span className="text-xs bg-[#2ECC71]/10 text-[#2ECC71] px-2 py-0.5 rounded font-mono font-bold border border-[#2ECC71]/30">Active</span>
                   </div>
-                  <div className="text-4xl font-extrabold text-[#2ECC71] tracking-tight">₹{netProfit.toLocaleString()}</div>
+                  <div className="text-4xl font-extrabold text-[#2ECC71] tracking-tight">₹{overallNetProfit.toLocaleString()}</div>
                   <p className="text-xs text-gray-400">Real-time revenue tracking across all registered orders.</p>
                 </div>
 
-                {/* Popular Services Grid (Image Layout Style) */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-[#1B2A4A] p-3 rounded-xl border border-blue-500/30 space-y-1">
+                    <div className="text-xs font-bold text-blue-400 uppercase">👗 LEDI WEAR</div>
+                    <div className="text-xs text-gray-300">Profit: <span className="font-bold text-[#2ECC71]">₹{lediFinancials.totalProfit}</span></div>
+                    <div className="text-xs text-gray-300">Expense: <span className="font-bold text-[#E74C3C]">₹{lediFinancials.totalExpense}</span></div>
+                  </div>
+                  <div className="bg-[#1B2A4A] p-3 rounded-xl border border-purple-500/30 space-y-1">
+                    <div className="text-xs font-bold text-purple-400 uppercase">👶 BEBI WEAR</div>
+                    <div className="text-xs text-gray-300">Profit: <span className="font-bold text-[#2ECC71]">₹{bebiFinancials.totalProfit}</span></div>
+                    <div className="text-xs text-gray-300">Expense: <span className="font-bold text-[#E74C3C]">₹{bebiFinancials.totalExpense}</span></div>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Primary Features</h3>
                   <div className="grid grid-cols-4 gap-2">
@@ -239,19 +342,20 @@
                   </div>
                 </div>
 
-                {/* Financial Stitching Breakdown */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-gray-800">
-                    <div className="text-[11px] text-gray-400 font-medium">Ledi Stitching</div>
-                    <div className="text-xl font-bold text-blue-400 mt-1">₹{lediStitching.toLocaleString()}</div>
-                  </div>
-                  <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-gray-800">
-                    <div className="text-[11px] text-gray-400 font-medium">Bebi Stitching</div>
-                    <div className="text-xl font-bold text-purple-400 mt-1">₹{bebiStitching.toLocaleString()}</div>
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">Stitching Earnings</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-gray-800">
+                      <div className="text-[11px] text-gray-400 font-medium">Ani Mol Total Stitching</div>
+                      <div className="text-xl font-bold text-[#2ECC71] mt-1">₹{aniMolStitching.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-[#1B2A4A] p-3.5 rounded-xl border border-gray-800">
+                      <div className="text-[11px] text-gray-400 font-medium">Umma Total Stitching</div>
+                      <div className="text-xl font-bold text-[#2ECC71] mt-1">₹{ummaStitching.toLocaleString()}</div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Recommended Card Style Upcoming Delivery */}
                 <div className="bg-[#1B2A4A] p-4 rounded-2xl border border-gray-800 space-y-3">
                   <div className="flex justify-between items-center border-b border-gray-800 pb-2">
                     <span className="text-xs font-bold text-amber-400 uppercase tracking-wide">🗓 Next Upcoming Delivery</span>
@@ -335,22 +439,42 @@
 
                 <div className="bg-[#0D1B2A] p-3 rounded-xl border border-gray-800 space-y-2">
                   <h3 className="text-xs font-bold text-[#2ECC71]">Financial & Stitching Breakdown</h3>
+                  
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Selling Price (₹)" value={formData.sellingPrice} onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value })} required className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
-                    <input type="number" placeholder="Advance Paid (₹)" value={formData.advanceAmount} onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Selling Price (₹)</label>
+                      <input type="number" placeholder="Selling Price (₹)" value={formData.sellingPrice} onChange={(e) => handleSellingPriceChange(e.target.value)} required className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Advance Amount (50% Auto)</label>
+                      <input type="number" placeholder="Advance (₹)" value={formData.advanceAmount} onChange={(e) => setFormData({ ...formData, advanceAmount: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Stitching Charge (₹)" value={formData.stitchingCharge} onChange={(e) => setFormData({ ...formData, stitchingCharge: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
-                    <select value={formData.tailorName} onChange={(e) => setFormData({ ...formData, tailorName: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white font-semibold">
-                      <option value="Ani Mol">Tailor: Ani Mol</option>
-                      <option value="Umma">Tailor: Umma</option>
-                    </select>
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Stitching Charge (₹)</label>
+                      <input type="number" placeholder="Stitching Charge (₹)" value={formData.stitchingCharge} onChange={(e) => setFormData({ ...formData, stitchingCharge: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white w-full" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-400 font-bold">Assign Tailor</label>
+                      <select value={formData.tailorName} onChange={(e) => setFormData({ ...formData, tailorName: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white font-semibold w-full">
+                        <option value="Ani Mol">Ani Mol</option>
+                        <option value="Umma">Umma</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <input type="number" placeholder="Material Cost (₹)" value={formData.materialRate} onChange={(e) => setFormData({ ...formData, materialRate: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
                     <input type="number" placeholder="Shipping Cost (₹)" value={formData.shippingCharge} onChange={(e) => setFormData({ ...formData, shippingCharge: e.target.value })} className="p-2 text-xs bg-[#1B2A4A] border border-gray-800 rounded text-white" />
+                  </div>
+
+                  <div className="bg-[#1B2A4A] p-2 rounded-lg border border-[#2ECC71]/30 flex justify-between items-center text-xs mt-2">
+                    <span className="text-gray-300 font-bold">Auto Calculated Profit:</span>
+                    <span className={`font-black text-sm ${estimatedFormProfit >= 0 ? 'text-[#2ECC71]' : 'text-[#E74C3C]'}`}>
+                      ₹{estimatedFormProfit}
+                    </span>
                   </div>
                 </div>
 
@@ -378,7 +502,7 @@
                             </span>
                             <h3 className="font-bold text-base text-white mt-1">{order.customerName}</h3>
                             <p className="text-xs text-gray-400">{order.dressName} | Delivery: <span className="text-gray-200">{order.deliveryDate}</span></p>
-                            <p className="text-[11px] text-gray-400">🧵 Tailor: {order.tailorName || 'Ani Mol'}</p>
+                            <p className="text-[11px] text-gray-400">🧵 Tailor: <span className="text-[#2ECC71] font-bold">{order.tailorName || 'Ani Mol'}</span></p>
                           </div>
                           <div className="text-right">
                             <div className="text-base font-black text-[#2ECC71]">₹{order.sellingPrice}</div>
@@ -393,17 +517,25 @@
                           </div>
                         </div>
 
-                        {/* WhatsApp Actions (Matching Compact Buttons) */}
-                        <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-gray-800 text-[11px]">
-                          <button onClick={() => triggerWhatsApp('adv', order)} className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
-                            💳 Adv
-                          </button>
+                        <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-gray-800 text-[11px]">
+                          {!order.isAdvPaid ? (
+                            <button onClick={() => triggerWhatsApp('adv', order)} className="bg-[#0D1B2A] hover:border-[#2ECC71] text-[#2ECC71] border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
+                              💳 Adv
+                            </button>
+                          ) : !order.isFullyPaid ? (
+                            <button onClick={() => triggerWhatsApp('full', order)} className="bg-amber-500/20 text-amber-400 border border-amber-500/30 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
+                              💰 Paid
+                            </button>
+                          ) : (
+                            <button disabled className="bg-gray-800 text-gray-500 border border-gray-700 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1 cursor-not-allowed">
+                              ✅ Full Paid
+                            </button>
+                          )}
+
                           <button onClick={() => triggerWhatsApp('remind', order)} className="bg-[#0D1B2A] hover:border-amber-400 text-amber-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
                             🔔 Remind
                           </button>
-                          <button onClick={() => triggerWhatsApp('full', order)} className="bg-[#0D1B2A] hover:border-purple-400 text-purple-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
-                            ✅ Paid
-                          </button>
+                          
                           <button onClick={() => triggerWhatsApp('dispatched', order)} className="bg-[#0D1B2A] hover:border-blue-400 text-blue-400 border border-gray-800 py-1.5 px-1 rounded-lg font-bold flex items-center justify-center gap-1">
                             🚚 Track
                           </button>
@@ -468,28 +600,101 @@
               </div>
             )}
 
-            {/* VIEW 5: ITEM STORE */}
+            {/* VIEW 5: ITEM STORE WITH IMAGE UPLOAD & DETAILS */}
             {view === 'items' && (
               <div className="space-y-3">
                 <h2 className="text-base font-bold text-white">Item Store / Inventory</h2>
-                <div className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2">
-                  <h3 className="text-xs font-bold text-gray-400">[+] Register New Inventory Item</h3>
-                  <input type="text" placeholder="Item Name" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Price (₹)" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
-                    <input type="number" placeholder="Stock" value={itemForm.stock} onChange={(e) => setItemForm({ ...itemForm, stock: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                
+                <form onSubmit={handleItemSubmit} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2.5">
+                  <h3 className="text-xs font-bold text-[#2ECC71]">[+] Register New Inventory Item</h3>
+                  
+                  <div>
+                    <label className="text-[10px] text-gray-400 font-bold">Select Target Brand</label>
+                    <select value={itemForm.brand} onChange={(e) => setItemForm({ ...itemForm, brand: e.target.value })} className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white mt-1">
+                      <option value="Ledi">Ledi Wear</option>
+                      <option value="Bebi">Bebi Wear</option>
+                    </select>
                   </div>
-                  <button onClick={() => { saveItemsToStorage([...items, { ...itemForm, id: Date.now() }]); setItemForm({ name: '', category: 'Fabric', brand: 'Ledi', stock: '', price: '', photo: null }); }} className="w-full bg-[#2ECC71] text-black font-bold py-2 rounded text-xs">
-                    Save Item
-                  </button>
-                </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" placeholder="Item Name *" value={itemForm.name} onChange={(e) => setItemForm({ ...itemForm, name: e.target.value })} required className="w-full p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Material Name (e.g. Silk, Cotton)" value={itemForm.materialName} onChange={(e) => setItemForm({ ...itemForm, materialName: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <input type="text" placeholder="Model Name / Style" value={itemForm.modelName} onChange={(e) => setItemForm({ ...itemForm, modelName: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Design Code / Name" value={itemForm.designName} onChange={(e) => setItemForm({ ...itemForm, designName: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <input type="number" placeholder="Price (₹) *" value={itemForm.price} onChange={(e) => setItemForm({ ...itemForm, price: e.target.value })} required className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Stock Qty" value={itemForm.stock} onChange={(e) => setItemForm({ ...itemForm, stock: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white" />
+                    <select value={itemForm.category} onChange={(e) => setItemForm({ ...itemForm, category: e.target.value })} className="p-2 text-xs bg-[#0D1B2A] border border-gray-800 rounded text-white">
+                      <option value="Fabric">Fabric</option>
+                      <option value="ReadyMade">ReadyMade</option>
+                      <option value="Accessory">Accessory</option>
+                    </select>
+                  </div>
+
+                  {/* Image Upload Input */}
+                  <div>
+                    <label className="text-[10px] text-gray-400 font-bold">Upload Product Photo</label>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs text-gray-400 mt-1 file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-[#2ECC71] file:text-black hover:file:bg-[#27ae60]" />
+                  </div>
+
+                  {itemForm.photo && (
+                    <div className="relative w-16 h-16 rounded overflow-hidden border border-gray-700">
+                      <img src={itemForm.photo} alt="Preview" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+
+                  <button type="submit" className="w-full bg-[#2ECC71] text-black font-extrabold py-2 rounded text-xs transition hover:bg-[#27ae60]">
+                    Save Item to Inventory
+                  </button>
+                </form>
+
+                {/* Registered Items List */}
+                <div className="grid grid-cols-2 gap-3">
                   {items.map(item => (
-                    <div key={item.id} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-1">
-                      <div className="text-xs font-bold text-white">{item.name}</div>
-                      <div className="text-xs text-[#2ECC71] font-extrabold">₹{item.price}</div>
-                      <div className="text-[10px] text-gray-400">In Stock: {item.stock}</div>
+                    <div key={item.id} className="bg-[#1B2A4A] p-3 rounded-xl border border-gray-800 space-y-2 flex flex-col justify-between shadow-md">
+                      <div>
+                        {item.photo ? (
+                          <div className="w-full h-28 rounded-lg overflow-hidden border border-gray-800 mb-2">
+                            <img src={item.photo} alt={item.name} className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <div className="w-full h-24 bg-[#0D1B2A] rounded-lg border border-gray-800 mb-2 flex items-center justify-center text-gray-600 text-xs">
+                            No Image
+                          </div>
+                        )}
+                        
+                        <div className="flex justify-between items-start">
+                          <h4 className="text-xs font-bold text-white line-clamp-1">{item.name}</h4>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded text-white ${item.brand === 'Ledi' ? 'bg-blue-600' : 'bg-purple-600'}`}>
+                            {item.brand || 'Ledi'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-[#2ECC71] font-extrabold mt-1">₹{item.price}</div>
+                        
+                        <div className="space-y-0.5 text-[10px] text-gray-400 mt-1.5 border-t border-gray-800/60 pt-1">
+                          {item.materialName && <div>🧵 <span className="text-gray-300">{item.materialName}</span></div>}
+                          {item.modelName && <div>👗 <span className="text-gray-300">{item.modelName}</span></div>}
+                          {item.designName && <div>🎨 <span className="text-gray-300">{item.designName}</span></div>}
+                          <div>📦 Stock: <span className="text-gray-200">{item.stock || 'N/A'}</span></div>
+                        </div>
+                      </div>
+
+                      {/* Action & Share Buttons */}
+                      <div className="space-y-1 pt-2 border-t border-gray-800">
+                        <button onClick={() => shareProductToWhatsApp(item)} className="w-full bg-[#2ECC71]/10 text-[#2ECC71] border border-[#2ECC71]/30 hover:bg-[#2ECC71] hover:text-black transition py-1 rounded text-[10px] font-bold flex items-center justify-center gap-1">
+                          📲 Share Product
+                        </button>
+                        <button onClick={() => handleDeleteItem(item.id)} className="w-full text-[10px] text-[#E74C3C] hover:underline text-center block pt-0.5">
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -498,7 +703,7 @@
 
           </main>
 
-          {/* FLOATING BOTTOM NAVIGATION BAR (Image Style Concept) */}
+          {/* FLOATING BOTTOM NAVIGATION BAR */}
           <nav className="fixed bottom-0 left-0 right-0 bg-[#1B2A4A] border-t border-gray-800 py-3 px-6 flex justify-around items-center z-40 shadow-2xl">
             <button onClick={() => setView('dashboard')} className={`flex flex-col items-center gap-1 ${view === 'dashboard' ? 'text-[#2ECC71]' : 'text-gray-400'}`}>
               <span className="text-lg">🏠</span>
